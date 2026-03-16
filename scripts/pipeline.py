@@ -654,7 +654,60 @@ def _transcribe_audio_cli(audio_path: Path, model: str = "small", language: str 
 
 
 # ---------------------------------------------------------------------------
-# 5) Write individual transcript file
+# 5) Format transcript text
+# ---------------------------------------------------------------------------
+
+def format_transcript(raw_text: str) -> str:
+    """Turn raw Whisper output into human-readable paragraphs.
+
+    Whisper often produces a single block of text with minimal punctuation.
+    This function:
+    1. Normalises whitespace
+    2. Splits on Chinese/English sentence endings
+    3. Groups sentences into paragraphs (~4-6 sentences each)
+    4. Preserves existing paragraph breaks if present
+    """
+    if not raw_text or raw_text.startswith("["):
+        # Error placeholders like [下载失败] — return as-is
+        return raw_text
+
+    text = raw_text.strip()
+
+    # If the text already has paragraph breaks, just clean it up
+    if "\n\n" in text:
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        return "\n\n".join(paragraphs)
+
+    # Normalise whitespace (collapse multiple spaces/newlines into single space)
+    text = re.sub(r"\s+", " ", text)
+
+    # Split on sentence-ending punctuation (Chinese and English)
+    # Keep the punctuation attached to the preceding sentence
+    sentences = re.split(r"(?<=[。！？!?\.…])\s*", text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+
+    if len(sentences) <= 1:
+        # No sentence boundaries found — try splitting on commas for long text
+        if len(text) > 200:
+            segments = re.split(r"(?<=[，,；;])\s*", text)
+            segments = [s.strip() for s in segments if s.strip()]
+            return _group_into_paragraphs(segments, group_size=6)
+        return text
+
+    return _group_into_paragraphs(sentences, group_size=5)
+
+
+def _group_into_paragraphs(segments: list, group_size: int = 5) -> str:
+    """Group a list of text segments into paragraphs."""
+    paragraphs = []
+    for i in range(0, len(segments), group_size):
+        chunk = segments[i : i + group_size]
+        paragraphs.append("".join(chunk))
+    return "\n\n".join(paragraphs)
+
+
+# ---------------------------------------------------------------------------
+# 6) Write individual transcript file
 # ---------------------------------------------------------------------------
 
 def _safe_filename(title: str, max_len: int = 80) -> str:
@@ -664,23 +717,26 @@ def _safe_filename(title: str, max_len: int = 80) -> str:
 
 def write_transcript_file(
     output_dir: Path, index: int, video: dict, text: str,
+    raw: bool = False,
 ) -> Path:
     num = str(index).zfill(2)
     safe_title = _safe_filename(video["title"])
     filename = f"{num}-{safe_title}.md"
     filepath = output_dir / filename
 
+    body = text if raw else format_transcript(text)
+
     content = (
         f"# {video['title']}\n\n"
         f"> 日期: {video.get('date', 'unknown')} | 来源: {video['url']}\n\n"
-        f"{text}\n"
+        f"{body}\n"
     )
     filepath.write_text(content, encoding="utf-8")
     return filepath
 
 
 # ---------------------------------------------------------------------------
-# 6) Pipeline orchestrator
+# 7) Pipeline orchestrator
 # ---------------------------------------------------------------------------
 
 async def run_pipeline(
@@ -695,6 +751,7 @@ async def run_pipeline(
     skip: int = 0,
     auto_confirm: bool = False,
     cookies_file: str = DEFAULT_COOKIES_FILE,
+    raw: bool = False,
 ):
     work = Path(work_dir)
     work.mkdir(parents=True, exist_ok=True)
@@ -731,7 +788,7 @@ async def run_pipeline(
         text = transcribe_audio_mlx(audio_file, model=whisper_model, language=language)
         if not keep_audio and audio_file.exists():
             audio_file.unlink()
-        filepath = write_transcript_file(out_dir, 1, video, text)
+        filepath = write_transcript_file(out_dir, 1, video, text, raw=raw)
         state.mark_completed(video["video_id"])
         logger.info(f"Done! Output: {filepath}")
         return
@@ -830,14 +887,14 @@ async def run_pipeline(
             for (global_idx, video, audio_file), result in zip(audio_files, results):
                 if isinstance(result, Exception) or result is False:
                     logger.warning(f"[{global_idx}] Download failed: {video['title'][:40]}")
-                    write_transcript_file(out_dir, global_idx, video, "[下载失败，已跳过]")
+                    write_transcript_file(out_dir, global_idx, video, "[下载失败，已跳过]", raw=raw)
                     state.mark_failed(video["video_id"])
                     fail_count += 1
                     continue
 
                 logger.info(f"[{global_idx}] Transcribing: {video['title'][:40]}...")
                 text = transcribe_audio_mlx(audio_file, model=whisper_model, language=language)
-                write_transcript_file(out_dir, global_idx, video, text)
+                write_transcript_file(out_dir, global_idx, video, text, raw=raw)
                 state.mark_completed(video["video_id"])
                 success_count += 1
 
@@ -881,6 +938,7 @@ def main():
     parser.add_argument("--skip", type=int, default=0, help="Skip first N pending videos")
     parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
     parser.add_argument("--cookies-file", default=DEFAULT_COOKIES_FILE, help="Cookie persistence file")
+    parser.add_argument("--raw", action="store_true", help="Skip formatting — output raw Whisper text")
 
     args = parser.parse_args()
 
@@ -896,6 +954,7 @@ def main():
         skip=args.skip,
         auto_confirm=args.yes,
         cookies_file=args.cookies_file,
+        raw=args.raw,
     ))
 
 
