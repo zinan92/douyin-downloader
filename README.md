@@ -1,6 +1,19 @@
-# douyin-downloader
+<div align="center">
 
-把抖音视频链接变成可读的 Markdown 文字稿。粘贴链接，自动完成下载、转录、分段格式化。
+# 🎬 Douyin Downloader
+
+**把抖音视频链接变成可读的 Markdown 文字稿**
+
+粘贴链接，自动完成下载、转录、分段格式化
+
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&logoColor=white)](https://python.org)
+[![Whisper](https://img.shields.io/badge/Whisper-MLX%20%2F%20OpenAI-FF6F00?logo=openai&logoColor=white)](https://github.com/ml-explore/mlx-examples)
+[![Playwright](https://img.shields.io/badge/Playwright-Chromium-2EAD33?logo=playwright&logoColor=white)](https://playwright.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+</div>
+
+---
 
 ```
 in  抖音视频链接 (/video/xxx) 或用户主页链接 (/user/xxx)
@@ -13,6 +26,35 @@ fail Whisper 转录失败          → mlx-whisper 失败自动降级到 openai-
 fail 未登录访问用户主页         → 只能抓到约 18 个视频，需先登录获取 cookie
 fail 中途中断                  → state.json 记录进度，重跑自动跳过已完成视频
 ```
+
+## 示例输出
+
+每个视频生成一个独立文件：`01-视频标题.md`、`02-视频标题.md`...
+
+```markdown
+# AI时代的金融市场
+
+> 日期: 2026-03-10 | 来源: https://www.douyin.com/video/123456
+
+今天想聊一个话题。就是AI时代的金融市场。如果我们把它具体细分的话。
+分为一级市场和二级市场。二级市场比较简单。
+
+我在这个行业做了五六年了。一级市场呢变化比较大。尤其是最近AI的发展。
+让很多传统的模式都开始失效了。所以我觉得我们需要重新思考一下。
+```
+
+批量模式会先显示视频总数并等待确认：
+
+```
+============================================================
+找到 86 个视频，确定要全部下载并转录吗？
+预计耗时：64 - 107 分钟
+输入 y 继续，n 取消，或输入数字限制下载数量：
+============================================================
+>
+```
+
+转录文本自动按语句分段（约 5 句一段）。加 `--raw` 跳过格式化输出原始文本。
 
 ## 架构
 
@@ -60,35 +102,6 @@ python scripts/pipeline.py "https://www.douyin.com/video/7601234567890" \
 python scripts/pipeline.py "https://www.douyin.com/user/MS4wLjABAAAA..." \
   --output-dir ~/transcripts/blogger-name/
 ```
-
-批量模式会显示视频总数并等待确认：
-
-```
-============================================================
-找到 86 个视频，确定要全部下载并转录吗？
-预计耗时：64 - 107 分钟
-输入 y 继续，n 取消，或输入数字限制下载数量：
-============================================================
->
-```
-
-## 输出格式
-
-每个视频生成一个独立文件：`01-视频标题.md`、`02-视频标题.md`...
-
-```markdown
-# 视频标题
-
-> 日期: 2026-03-10 | 来源: https://www.douyin.com/video/123456
-
-今天想聊一个话题。就是AI时代的金融市场。如果我们把它具体细分的话。
-分为一级市场和二级市场。二级市场比较简单。
-
-我在这个行业做了五六年了。一级市场呢变化比较大。尤其是最近AI的发展。
-让很多传统的模式都开始失效了。所以我觉得我们需要重新思考一下。
-```
-
-转录文本会自动按语句分段（约 5 句一段）。加 `--raw` 跳过格式化输出原始文本。
 
 ## 功能一览
 
@@ -227,22 +240,6 @@ result = subprocess.run(
 )
 ```
 
-### Agent 工作流
-
-```yaml
-steps:
-  - name: detect_url_type
-    logic: "/video/\\d+ → 单视频（直接处理）; /user/ → 批量（需确认）"
-
-  - name: run_pipeline
-    command: python scripts/pipeline.py "{url}" --output-dir {output_dir} -y
-    note: "-y 是 agent 调用的硬性要求，否则会阻塞等待 stdin"
-
-  - name: resume_after_interrupt
-    command: python scripts/pipeline.py "{url}" --output-dir {output_dir} -y
-    note: "state.json 自动跟踪进度，无需额外参数"
-```
-
 ### Claude Code Skill 安装
 
 ```bash
@@ -252,6 +249,13 @@ git clone https://github.com/zinan92/douyin-downloader.git \
 
 安装后 Claude 会自动识别抖音链接并提供转录服务。
 
+## 相关项目
+
+| 项目 | 说明 |
+|------|------|
+| [videocut](https://github.com/zinan92/videocut) | 口播视频一键转化为 8 平台全套发布物料 |
+| [trading-copilot](https://github.com/zinan92/trading-copilot) | AI 交易方法论分析助手 |
+
 ## License
 
-MIT
+[MIT](LICENSE)
